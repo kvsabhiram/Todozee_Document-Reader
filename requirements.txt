@@ -1,0 +1,16 @@
+# Surya OCR API — runtime dependencies
+# Install the parent library separately (it pulls in torch, transformers, etc.):
+#   pip install surya-ocr>=0.17.1
+# Then install the API/server deps below:
+#   pip install -r requirements.txt
+
+surya-ocr>=0.17.1
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.27
+python-multipart>=0.0.9
+filetype>=1.2.0
+pillow>=10.2.0
+pydantic>=2.5.0
+
+# For client.py
+requests>=2.31.0
