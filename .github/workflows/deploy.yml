@@ -60,8 +60,8 @@ jobs:
             git fetch --all --prune
             git reset --hard origin/main
 
-            echo "==> Syncing dependencies"
-            "$VENV_DIR/bin/pip" install -r requirements.txt
+            echo "==> Syncing dependencies (pinned lockfile for reproducible installs)"
+            "$VENV_DIR/bin/pip" install -r requirements.lock.txt
 
             echo "==> Restarting $SERVICE"
             sudo systemctl restart "$SERVICE"

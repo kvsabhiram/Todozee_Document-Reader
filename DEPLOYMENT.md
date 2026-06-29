@@ -53,8 +53,32 @@ terraform apply              # creates SSH key, SG, IAM, EC2 GPU, EIP, alarms
 terraform output             # public_ip, ssh_command, health_url, ...
 ```
 
-State is **local** (no remote backend). The generated SSH private key is
-written to `terraform/todozee-doc-reader-key.pem` (gitignored).
+State is stored in a **remote S3 backend** (versioned + encrypted) with
+**S3-native locking** (see `backend.tf`). The bucket is bootstrapped once,
+out-of-band, since a backend can't live in the state it stores:
+
+```bash
+BUCKET=todozee-doc-reader-tfstate-637560253183
+aws s3api create-bucket --bucket "$BUCKET" --region ap-south-1 \
+  --create-bucket-configuration LocationConstraint=ap-south-1
+aws s3api put-bucket-versioning --bucket "$BUCKET" --versioning-configuration Status=Enabled
+aws s3api put-bucket-encryption  --bucket "$BUCKET" --server-side-encryption-configuration \
+  '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"},"BucketKeyEnabled":true}]}'
+aws s3api put-public-access-block --bucket "$BUCKET" --public-access-block-configuration \
+  BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+```
+
+The generated SSH private key is written to
+`terraform/todozee-doc-reader-key.pem` (gitignored).
+
+### Pinned dependencies
+
+Deploys install from `requirements.lock.txt` (a fully pinned `pip freeze` of
+the app deps) so they're reproducible — a deploy can't silently pull a new
+library version. `requirements.txt` stays the human-readable direct-dep list.
+The GPU stack (torch/CUDA) is excluded from the lock and managed by user_data.
+Regenerate the lock after an intentional dependency bump (command is in the
+lockfile header).
 
 > **GPU quota note:** g4dn/g5 instances draw from the *Running On-Demand G and
 > VT instances* vCPU quota (8 in this account/region). If `apply` fails with

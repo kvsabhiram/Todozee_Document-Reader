@@ -1,0 +1,6 @@
+# Force LF on deployment files. Critical for *.tpl: CRLF changes the rendered
+# Terraform user_data hash and would trigger a spurious EC2 instance rebuild.
+# Shell/Terraform/workflow files also run on Linux and must stay LF.
+*.tpl  text eol=lf
+*.tf   text eol=lf
+*.sh   text eol=lf
