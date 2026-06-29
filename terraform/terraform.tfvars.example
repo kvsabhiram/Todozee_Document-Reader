@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars and override as needed. terraform.tfvars is gitignored.
+
+# Hostname Caddy serves with auto-HTTPS (add a DNS A-record -> the EIP).
+domain = "docreader.chatbucket.chat"
+
+# Lock SSH to your IP for production, e.g. "203.0.113.7/32".
+ssh_allowed_cidr = "0.0.0.0/0"
+
+# Override defaults if needed:
+# region         = "ap-south-1"
+# instance_type  = "g4dn.xlarge"   # NVIDIA T4 16GB; g5.xlarge (A10G 24GB) is faster
+# git_ref        = "main"
+# root_volume_gb = 100
+# torch_cuda_index = "https://download.pytorch.org/whl/cu126"  # pin a CUDA wheel index

@@ -1,0 +1,27 @@
+name: Deploy CI
+
+# Lightweight sanity check for the OCR API wrapper (ocr_api.py / client.py).
+# The upstream Surya library has its own workflows (ci.yml, etc.); this one
+# only guards the deployment entrypoints we own.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    name: Byte-compile API entrypoints
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Byte-compile entrypoints
+        run: python -m compileall -q ocr_api.py client.py
