@@ -4,9 +4,12 @@ name: Deploy CI
 # The upstream Surya library has its own workflows (ci.yml, etc.); this one
 # only guards the deployment entrypoints we own.
 
+# Fast pre-merge feedback on feature branches and PRs. Pushes to main are
+# covered by the `ci` gate inside deploy.yml (which then gates the deploy),
+# so main is excluded here to avoid a duplicate run.
 on:
   push:
-    branches: ["**"]
+    branches-ignore: [main]
   pull_request:
     branches: [main]
   workflow_dispatch: {}

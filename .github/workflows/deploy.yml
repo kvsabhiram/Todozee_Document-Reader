@@ -1,7 +1,8 @@
 name: Deploy
 
-# Pulls the latest code onto the running EC2 GPU instance and restarts the
-# OCR service. Infra itself is managed by Terraform (see terraform/).
+# Production pipeline for the OCR service. On push to main it runs a CI gate
+# (byte-compile) and only deploys if that gate passes. Infra itself is managed
+# by Terraform (see terraform/).
 #
 # Required GitHub repository secrets:
 #   EC2_HOST     Elastic IP / hostname of the instance  (terraform output public_ip)
@@ -21,8 +22,23 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  ci:
+    name: CI gate (byte-compile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Byte-compile entrypoints
+        run: python -m compileall -q ocr_api.py client.py
+
   deploy:
     name: Deploy to EC2
+    needs: ci # gate: deploy only runs if the CI job succeeds
     runs-on: ubuntu-latest
     steps:
       - name: Deploy over SSH
