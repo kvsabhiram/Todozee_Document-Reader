@@ -1,0 +1,12 @@
+# Terraform state & local secrets
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+crash.log
+crash.*.log
+
+# Generated SSH private key and tfvars
+*.pem
+terraform.tfvars
+*.auto.tfvars

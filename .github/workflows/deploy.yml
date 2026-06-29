@@ -1,0 +1,65 @@
+name: Deploy
+
+# Pulls the latest code onto the running EC2 GPU instance and restarts the
+# OCR service. Infra itself is managed by Terraform (see terraform/).
+#
+# Required GitHub repository secrets:
+#   EC2_HOST     Elastic IP / hostname of the instance  (terraform output public_ip)
+#   EC2_SSH_KEY  Contents of the generated private key   (terraform output private_key_path)
+#   EC2_USER     SSH user (optional, defaults to "ubuntu")
+#
+# Optional repository variable:
+#   APP_DIR      App directory on the host (defaults to /opt/todozee-doc-reader)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 30m
+          script: |
+            set -euo pipefail
+            APP_DIR="${{ vars.APP_DIR || '/opt/todozee-doc-reader' }}"
+            REPO_DIR="$APP_DIR/repo"
+            VENV_DIR="$APP_DIR/venv"
+            SERVICE="$(basename "$APP_DIR").service"
+            PORT=8040
+
+            echo "==> Updating $REPO_DIR"
+            cd "$REPO_DIR"
+            git fetch --all --prune
+            git reset --hard origin/main
+
+            echo "==> Syncing dependencies"
+            "$VENV_DIR/bin/pip" install -r requirements.txt
+
+            echo "==> Restarting $SERVICE"
+            sudo systemctl restart "$SERVICE"
+            sleep 5
+            sudo systemctl is-active "$SERVICE"
+
+            echo "==> Waiting for health (models reload on restart)"
+            for i in $(seq 1 60); do
+              if curl -fsS "http://127.0.0.1:$PORT/health" >/dev/null; then
+                echo "Service healthy."
+                exit 0
+              fi
+              echo "  ...models still loading ($i)"; sleep 10
+            done
+            echo "Health check did not pass in time (models may still be loading)." >&2
+            exit 1
