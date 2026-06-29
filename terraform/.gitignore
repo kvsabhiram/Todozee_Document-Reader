@@ -2,7 +2,8 @@
 *.tfstate
 *.tfstate.*
 .terraform/
-.terraform.lock.hcl
+# .terraform.lock.hcl IS committed (pins provider versions for reproducible
+# installs across local + CI). Only the .terraform/ cache dir is ignored.
 crash.log
 crash.*.log
 
