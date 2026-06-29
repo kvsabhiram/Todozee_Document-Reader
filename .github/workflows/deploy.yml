@@ -55,13 +55,18 @@ jobs:
             VENV_DIR="$APP_DIR/venv"
             SERVICE="$(basename "$APP_DIR").service"
 
-            echo "==> Updating $REPO_DIR"
+            echo "==> Recording current commit for rollback"
             cd "$REPO_DIR"
             git fetch --all --prune
+            git rev-parse HEAD > "$APP_DIR/.deploy_prev_sha"
+            echo "    last-good = $(cat "$APP_DIR/.deploy_prev_sha")"
+
+            echo "==> Updating to origin/main"
             git reset --hard origin/main
 
             echo "==> Syncing dependencies (pinned lockfile for reproducible installs)"
-            "$VENV_DIR/bin/pip" install -r requirements.lock.txt
+            if [ -f requirements.lock.txt ]; then REQ=requirements.lock.txt; else REQ=requirements.txt; fi
+            "$VENV_DIR/bin/pip" install -r "$REQ"
 
             echo "==> Restarting $SERVICE"
             sudo systemctl restart "$SERVICE"
@@ -87,4 +92,45 @@ jobs:
               echo "  ...models still loading ($i)"; sleep 10
             done
             echo "Health check did not pass in time (models may still be loading)." >&2
+            exit 1
+
+      - name: Roll back on failed deploy
+        if: failure() # runs only when Deploy over SSH or Health check failed
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 20m
+          script: |
+            set -euo pipefail
+            APP_DIR="${{ vars.APP_DIR || '/opt/todozee-doc-reader' }}"
+            REPO_DIR="$APP_DIR/repo"
+            VENV_DIR="$APP_DIR/venv"
+            SERVICE="$(basename "$APP_DIR").service"
+            PORT=8040
+
+            if [ ! -s "$APP_DIR/.deploy_prev_sha" ]; then
+              echo "No recorded previous commit; cannot auto-roll back." >&2
+              exit 1
+            fi
+            PREV="$(cat "$APP_DIR/.deploy_prev_sha")"
+            echo "==> Deploy failed. Rolling back to last-good commit $PREV"
+            cd "$REPO_DIR"
+            git reset --hard "$PREV"
+
+            if [ -f requirements.lock.txt ]; then REQ=requirements.lock.txt; else REQ=requirements.txt; fi
+            "$VENV_DIR/bin/pip" install -r "$REQ"
+
+            sudo systemctl restart "$SERVICE"
+            sleep 5
+            echo "==> Verifying rolled-back service health"
+            for i in $(seq 1 60); do
+              if curl -fsS "http://127.0.0.1:$PORT/health" >/dev/null; then
+                echo "Rolled back successfully to $PREV; service healthy."
+                exit 0
+              fi
+              echo "  ...recovering ($i)"; sleep 10
+            done
+            echo "ROLLBACK FAILED — service not healthy on $PREV. Manual intervention needed." >&2
             exit 1

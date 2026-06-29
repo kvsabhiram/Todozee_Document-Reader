@@ -1,0 +1,73 @@
+name: Rollback
+
+# Manual rollback to a specific commit/tag. Use when a deploy passed health
+# checks but is functionally bad (a logic bug the /health probe can't catch).
+# Run from the Actions tab and provide the target ref.
+#
+# Required secrets: EC2_HOST, EC2_SSH_KEY, EC2_USER (same as deploy).
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git commit SHA or tag to roll back to (a previous good version)"
+        required: true
+        default: ""
+
+concurrency:
+  group: deploy-production # serialize with deploys
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    name: Roll back to a chosen version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Roll back over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 20m
+          script: |
+            set -euo pipefail
+            APP_DIR="${{ vars.APP_DIR || '/opt/todozee-doc-reader' }}"
+            REPO_DIR="$APP_DIR/repo"
+            VENV_DIR="$APP_DIR/venv"
+            SERVICE="$(basename "$APP_DIR").service"
+            PORT=8040
+            TARGET="${{ github.event.inputs.ref }}"
+
+            cd "$REPO_DIR"
+            git fetch --all --prune --tags
+
+            # Fail clearly if the requested ref doesn't exist.
+            if ! git cat-file -e "${TARGET}^{commit}" 2>/dev/null; then
+              echo "Ref '$TARGET' not found in the repository." >&2
+              exit 1
+            fi
+
+            echo "==> Recording current commit before rollback"
+            git rev-parse HEAD > "$APP_DIR/.deploy_prev_sha"
+
+            echo "==> Rolling back to $TARGET"
+            git reset --hard "$TARGET"
+
+            if [ -f requirements.lock.txt ]; then REQ=requirements.lock.txt; else REQ=requirements.txt; fi
+            "$VENV_DIR/bin/pip" install -r "$REQ"
+
+            sudo systemctl restart "$SERVICE"
+            sleep 5
+            sudo systemctl is-active "$SERVICE"
+
+            echo "==> Verifying health on $TARGET"
+            for i in $(seq 1 60); do
+              if curl -fsS "http://127.0.0.1:$PORT/health" >/dev/null; then
+                echo "Rolled back to $TARGET; service healthy: $(curl -fsS http://127.0.0.1:$PORT/health)"
+                exit 0
+              fi
+              echo "  ...models still loading ($i)"; sleep 10
+            done
+            echo "Health check did not pass after rollback to $TARGET." >&2
+            exit 1
