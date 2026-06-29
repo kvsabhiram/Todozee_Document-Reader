@@ -54,7 +54,6 @@ jobs:
             REPO_DIR="$APP_DIR/repo"
             VENV_DIR="$APP_DIR/venv"
             SERVICE="$(basename "$APP_DIR").service"
-            PORT=8040
 
             echo "==> Updating $REPO_DIR"
             cd "$REPO_DIR"
@@ -69,10 +68,20 @@ jobs:
             sleep 5
             sudo systemctl is-active "$SERVICE"
 
-            echo "==> Waiting for health (models reload on restart)"
+      - name: Health check
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 15m
+          script: |
+            set -euo pipefail
+            PORT=8040
+            echo "==> Waiting for /health on 127.0.0.1:$PORT (models reload on restart)"
             for i in $(seq 1 60); do
               if curl -fsS "http://127.0.0.1:$PORT/health" >/dev/null; then
-                echo "Service healthy."
+                echo "Service healthy: $(curl -fsS http://127.0.0.1:$PORT/health)"
                 exit 0
               fi
               echo "  ...models still loading ($i)"; sleep 10
