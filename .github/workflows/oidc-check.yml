@@ -1,0 +1,30 @@
+name: OIDC check
+
+# Proves GitHub Actions can assume the AWS IAM role via OIDC with NO stored
+# credentials. Runs only when this file changes, or manually.
+
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/oidc-check.yml"]
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write # required for GitHub to mint the OIDC token
+  contents: read
+
+jobs:
+  verify:
+    name: Assume role via OIDC
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials via OIDC (no long-lived keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::637560253183:role/todozee-doc-reader-gha-oidc
+          aws-region: ap-south-1
+
+      - name: Confirm identity
+        run: |
+          echo "Assumed role via OIDC — caller identity:"
+          aws sts get-caller-identity
