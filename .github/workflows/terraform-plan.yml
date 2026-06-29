@@ -1,0 +1,49 @@
+name: Terraform plan
+
+# Read-only infrastructure plan. Runs on PRs and pushes to main that touch
+# terraform/, plus manually. Assumes a read-only OIDC role (no stored keys)
+# so reviewers can see what would change before any apply.
+
+on:
+  pull_request:
+    paths: ["terraform/**"]
+  push:
+    branches: [main]
+    paths: ["terraform/**"]
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  plan:
+    name: terraform plan
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC (read-only)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::637560253183:role/todozee-doc-reader-gha-oidc
+          aws-region: ap-south-1
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.6"
+
+      - name: terraform init
+        run: terraform init -input=false
+
+      - name: terraform fmt check
+        run: terraform fmt -check -recursive
+
+      - name: terraform validate
+        run: terraform validate -no-color
+
+      - name: terraform plan
+        run: terraform plan -input=false -no-color

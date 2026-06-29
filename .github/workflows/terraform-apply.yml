@@ -1,0 +1,53 @@
+name: Terraform apply
+
+# Applies infrastructure changes. MANUAL ONLY (workflow_dispatch) with a typed
+# confirmation — never runs automatically on merge. This is deliberate: because
+# aws_instance.this has user_data_replace_on_change = true, an unreviewed apply
+# after a user_data edit would DESTROY AND REBUILD the live GPU instance.
+#
+# Run it from the Actions tab, review the plan in the log, and only proceed if
+# the plan is what you expect. The `production` environment lets you add a
+# required-reviewer protection rule in repo Settings for an extra approval gate.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "apply" to confirm. WARNING: a user_data change rebuilds the GPU instance.'
+        required: true
+        default: ""
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  apply:
+    name: terraform apply
+    if: ${{ github.event.inputs.confirm == 'apply' }}
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC (apply role)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::637560253183:role/todozee-doc-reader-gha-apply
+          aws-region: ap-south-1
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.6"
+
+      - name: terraform init
+        run: terraform init -input=false
+
+      - name: terraform plan (review in log before apply)
+        run: terraform plan -input=false -no-color
+
+      - name: terraform apply
+        run: terraform apply -input=false -auto-approve -no-color
